@@ -46,17 +46,39 @@
   {{- if and (eq .Section "blog") .IsPage }}
   <meta property="article:published_time" content="{{ .Date.Format "2006-01-02T15:04:05Z07:00" }}" />
   {{- with .Lastmod }}<meta property="article:modified_time" content="{{ .Format "2006-01-02T15:04:05Z07:00" }}" />{{ end }}
-  {{- with .Params.author }}<meta property="article:author" content="{{ . }}" />{{ end }}
+  {{- $author := partial "blog/author.html" . }}
+  {{- range ($author.list | default (slice $author)) }}
+    {{- if .name }}<meta property="article:author" content="{{ .linkedin | default .name }}" />{{ end }}
+  {{- end }}
   {{- with .Params.category }}<meta property="article:section" content="{{ . }}" />{{ end }}
+  {{- /* Structured data so search engines can show the post with its author and date. */}}
+  {{- $ld := dict "@context" "https://schema.org" "@type" "BlogPosting" "headline" .Title "description" $desc "url" $url "datePublished" (.Date.Format "2006-01-02T15:04:05Z07:00") "dateModified" (.Lastmod.Format "2006-01-02T15:04:05Z07:00") "publisher" (dict "@type" "Organization" "name" site.Title "url" site.Home.Permalink) }}
+  {{- with $ogImage }}{{ $ld = merge $ld (dict "image" .url) }}{{ end }}
+  {{- $persons := slice -}}
+  {{- range ($author.list | default (slice $author)) }}
+    {{- if .name }}
+      {{- $person := dict "@type" (cond (isset . "key") "Person" "Organization") "name" .name }}
+      {{- $same := slice }}
+      {{- with .linkedin }}{{ $person = merge $person (dict "url" .) }}{{ $same = $same | append . }}{{ end }}
+      {{- with .github }}{{ $same = $same | append (printf "https://github.com/%s" .) }}{{ end }}
+      {{- with $same }}{{ $person = merge $person (dict "sameAs" .) }}{{ end }}
+      {{- with .role }}{{ $person = merge $person (dict "jobTitle" .) }}{{ end }}
+      {{- $persons = $persons | append $person -}}
+    {{- end }}
+  {{- end }}
+  {{- if eq (len $persons) 1 }}{{ $ld = merge $ld (dict "author" (index $persons 0)) }}
+  {{- else if gt (len $persons) 1 }}{{ $ld = merge $ld (dict "author" $persons) }}{{ end }}
+  <script type="application/ld+json">{{ $ld | jsonify | safeJS }}</script>
   {{- end }}
   {{- with site.Home.OutputFormats.Get "rss" }}
   <link rel="alternate" type="application/rss+xml" href="{{ .Permalink }}" title="{{ site.Title }} — Blog" />
   {{- end }}
 
-  {{- /* The site script: "defer" lets it download straight away while the page
-       is drawn, and run once the page has been read. */}}
-  {{- with resources.Get "js/app.js" | minify | fingerprint }}
-  <script defer src="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  {{- with resources.Get "css/main.css" | minify | fingerprint }}
+  <link rel="stylesheet" href="{{ .RelPermalink }}" integrity="{{ .Data.Integrity }}" />
   {{- end }}
   {{- partial "fonts.html" . }}
   {{- /* The CSS is written into the page itself rather than linked as separate
